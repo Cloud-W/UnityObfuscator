@@ -1,0 +1,15 @@
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.vs
+*.sln.meta
+*.csproj
+/Temp/
+/Temp.meta
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/.utmp/
