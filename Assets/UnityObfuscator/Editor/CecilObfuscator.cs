@@ -49,6 +49,8 @@ namespace UnityObfuscator.Editor
                 Type methodDefinitionType = cecilAssembly.GetType("Mono.Cecil.MethodDefinition");
                 Type fieldDefinitionType = cecilAssembly.GetType("Mono.Cecil.FieldDefinition");
                 Type propertyDefinitionType = cecilAssembly.GetType("Mono.Cecil.PropertyDefinition");
+                Type readerParametersType = cecilAssembly.GetType("Mono.Cecil.ReaderParameters");
+                Type writerParametersType = cecilAssembly.GetType("Mono.Cecil.WriterParameters");
                 
                 if (assemblyDefinitionType == null)
                 {
@@ -56,7 +58,7 @@ namespace UnityObfuscator.Editor
                     return false;
                 }
                 
-                // Read assembly
+                // Read assembly - use simple ReadAssembly without parameters first
                 MethodInfo readAssembly = assemblyDefinitionType.GetMethod("ReadAssembly", 
                     BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string) }, null);
                     
@@ -153,20 +155,64 @@ namespace UnityObfuscator.Editor
                 
                 logger.Log($"Obfuscated {processedTypes} types and {processedMembers} members");
                 
-                // Write assembly back
-                MethodInfo writeMethod = assemblyDefinitionType.GetMethod("Write", 
-                    BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
-                    
-                if (writeMethod != null)
+                // Write assembly to a temporary file first to avoid corruption
+                string tempPath = assemblyPath + ".tmp";
+                
+                try
                 {
-                    writeMethod.Invoke(assembly, new object[] { assemblyPath });
+                    // Write to temp file
+                    MethodInfo writeMethod = assemblyDefinitionType.GetMethod("Write", 
+                        BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+                        
+                    if (writeMethod == null)
+                    {
+                        logger.LogError("Could not find Write method");
+                        return false;
+                    }
+                    
+                    writeMethod.Invoke(assembly, new object[] { tempPath });
+                    logger.Log($"Assembly written to temp file");
+                    
+                    // Dispose the assembly to release file locks
+                    if (assembly is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                    
+                    // Wait a bit for file handles to be released
+                    System.Threading.Thread.Sleep(100);
+                    
+                    // Replace original file with temp file
+                    if (File.Exists(assemblyPath))
+                    {
+                        File.Delete(assemblyPath);
+                    }
+                    File.Move(tempPath, assemblyPath);
+                    
                     logger.Log($"Assembly written successfully: {Path.GetFileName(assemblyPath)}");
                 }
-                
-                // Dispose assembly
-                if (assembly is IDisposable disposable)
+                catch (Exception writeEx)
                 {
-                    disposable.Dispose();
+                    logger.LogError($"Failed to write assembly: {writeEx.Message}");
+                    logger.LogError($"Stack trace: {writeEx.StackTrace}");
+                    
+                    // Clean up temp file
+                    if (File.Exists(tempPath))
+                    {
+                        try
+                        {
+                            File.Delete(tempPath);
+                        }
+                        catch { }
+                    }
+                    
+                    // Make sure assembly is disposed
+                    if (assembly is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                    
+                    return false;
                 }
                 
                 return true;

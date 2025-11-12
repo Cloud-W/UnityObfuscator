@@ -19,7 +19,7 @@ namespace UnityObfuscator.Editor
         private bool showExclusions = true;
         private bool showAdvanced = false;
         
-        [MenuItem("Tools/Unity Obfuscator")]
+        [MenuItem("Tools/Unity Obfuscator Panel")]
         public static void ShowWindow()
         {
             var window = GetWindow<ObfuscatorWindow>("Unity Obfuscator");
