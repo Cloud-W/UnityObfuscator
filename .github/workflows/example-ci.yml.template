@@ -1,0 +1,121 @@
+# Example CI/CD workflow for Unity Obfuscator
+# Copy this file to .github/workflows/build.yml and customize as needed
+
+name: Unity Build with Obfuscation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build with Obfuscation
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        unity-version: ['2021.3.x', '2022.3.x']
+        target-platform: [Android, iOS, StandaloneWindows64]
+    
+    steps:
+      # Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          lfs: true
+      
+      # Cache Unity Library
+      - name: Cache Unity Library
+        uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-${{ matrix.target-platform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ matrix.target-platform }}-
+            Library-
+      
+      # Install Mono.Cecil (if not committed to repo)
+      - name: Download Mono.Cecil
+        run: |
+          mkdir -p Assets/UnityObfuscator/Libs
+          curl -L -o cecil.zip https://www.nuget.org/api/v2/package/Mono.Cecil/0.11.5
+          unzip -q cecil.zip
+          cp lib/netstandard2.0/Mono.Cecil.dll Assets/UnityObfuscator/Libs/
+          rm -rf cecil.zip lib _rels package *.nuspec '[Content_Types].xml'
+      
+      # Run Obfuscation
+      - name: Run Unity Obfuscation
+        uses: game-ci/unity-builder@v3
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: ${{ matrix.target-platform }}
+          unityVersion: ${{ matrix.unity-version }}
+          customParameters: -quit -batchmode -executeMethod UnityObfuscator.Editor.ObfuscatorCLI.RunObfuscation -logFile obfuscation.log
+      
+      # Upload Obfuscation Logs
+      - name: Upload Obfuscation Logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: obfuscation-logs-${{ matrix.target-platform }}
+          path: Library/ObfuscatorReports/
+      
+      # Build Project
+      - name: Build Unity Project
+        uses: game-ci/unity-builder@v3
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: ${{ matrix.target-platform }}
+          unityVersion: ${{ matrix.unity-version }}
+          buildName: MyGame
+          buildsPath: build
+      
+      # Upload Build
+      - name: Upload Build
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-${{ matrix.target-platform }}
+          path: build
+      
+      # Rollback on Failure (Optional)
+      - name: Rollback Obfuscation
+        if: failure()
+        uses: game-ci/unity-builder@v3
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          targetPlatform: ${{ matrix.target-platform }}
+          unityVersion: ${{ matrix.unity-version }}
+          customParameters: -quit -batchmode -executeMethod UnityObfuscator.Editor.ObfuscatorCLI.Rollback
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Download Mono.Cecil
+        run: |
+          mkdir -p Assets/UnityObfuscator/Libs
+          curl -L -o cecil.zip https://www.nuget.org/api/v2/package/Mono.Cecil/0.11.5
+          unzip -q cecil.zip
+          cp lib/netstandard2.0/Mono.Cecil.dll Assets/UnityObfuscator/Libs/
+          rm -rf cecil.zip lib _rels package *.nuspec '[Content_Types].xml'
+      
+      - name: Run Unity Tests
+        uses: game-ci/unity-test-runner@v3
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          unityVersion: 2022.3.x
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
