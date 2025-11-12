@@ -1,0 +1,44 @@
+{
+  "enableObfuscation": true,
+  "autoRunOnBuild": false,
+  "enableBackup": true,
+  "backupPath": "Library/ObfuscatorBackups",
+  "assemblyPath": "Library/ScriptAssemblies",
+  "targetAssemblies": [
+    "Assembly-CSharp.dll"
+  ],
+  "obfuscateTypeNames": true,
+  "obfuscateMethodNames": true,
+  "obfuscateFieldNames": true,
+  "obfuscatePropertyNames": true,
+  "encryptStrings": false,
+  "controlFlowObfuscation": false,
+  "excludedNamespaces": [
+    "UnityEngine",
+    "UnityEditor",
+    "System",
+    "Mono"
+  ],
+  "excludedAssemblies": [
+    "UnityEngine",
+    "UnityEditor",
+    "mscorlib",
+    "System",
+    "Mono.Cecil"
+  ],
+  "excludedTypes": [],
+  "preserveAttributes": [
+    "UnityEngine.SerializeField",
+    "UnityEngine.Serializable",
+    "UnityEngine.Preserve",
+    "System.Runtime.CompilerServices.CompilerGenerated"
+  ],
+  "encryptionKey": "",
+  "autoGenerateKey": true,
+  "verboseLogging": true,
+  "generateReport": true,
+  "reportPath": "Library/ObfuscatorReports",
+  "useExternalObfuscator": false,
+  "externalObfuscatorPath": "",
+  "externalObfuscatorArgs": ""
+}

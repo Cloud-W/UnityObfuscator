@@ -1,0 +1,9 @@
+# Ignore Mono.Cecil DLLs (users must download them separately)
+*.dll
+*.dll.meta
+*.zip
+*.nupkg
+
+# But keep the README
+!README.md
+!.gitignore
