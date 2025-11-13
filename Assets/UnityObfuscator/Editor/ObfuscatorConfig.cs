@@ -28,6 +28,14 @@ namespace UnityObfuscator.Editor
         public bool encryptStrings = true;
         public bool controlFlowObfuscation = false;
         
+        [Header("Unity Serialization Protection")]
+        [Tooltip("Preserve MonoBehaviour and ScriptableObject class names (REQUIRED for scenes/prefabs)")]
+        public bool preserveMonoBehaviourNames = true;
+        [Tooltip("Preserve fields with [SerializeField] attribute (REQUIRED for Inspector serialization)")]
+        public bool preserveSerializedFields = true;
+        [Tooltip("EXPERIMENTAL: Attempt to patch asset files with obfuscated names. May cause build failures!")]
+        public bool enableAssetPatching = false;
+        
         [Header("Exclusions")]
         public List<string> excludedNamespaces = new List<string> 
         { 

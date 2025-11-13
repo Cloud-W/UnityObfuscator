@@ -16,6 +16,8 @@ namespace UnityObfuscator.Editor
         private ObfuscatorLogger logger;
         private Dictionary<string, string> nameMap;
         private int nameCounter;
+        private UnityAssetPatcher assetPatcher;
+        private string currentTypeName; // Track current type being processed
         
         public CecilObfuscator(ObfuscatorConfig config, ObfuscatorLogger logger)
         {
@@ -23,6 +25,16 @@ namespace UnityObfuscator.Editor
             this.logger = logger;
             this.nameMap = new Dictionary<string, string>();
             this.nameCounter = 0;
+            this.assetPatcher = new UnityAssetPatcher(config, logger);
+            this.currentTypeName = null;
+        }
+        
+        /// <summary>
+        /// Get the asset patcher to apply mappings to Unity assets
+        /// </summary>
+        public UnityAssetPatcher GetAssetPatcher()
+        {
+            return assetPatcher;
         }
         
         /// <summary>
@@ -92,6 +104,10 @@ namespace UnityObfuscator.Editor
                 foreach (object type in types)
                 {
                     string typeName = typeDefinitionType.GetProperty("FullName").GetValue(type) as string;
+                    string simpleTypeName = typeDefinitionType.GetProperty("Name").GetValue(type) as string;
+                    
+                    // Set current type name for field mapping
+                    currentTypeName = simpleTypeName;
                     
                     if (ShouldExcludeType(typeName))
                     {
@@ -318,14 +334,43 @@ namespace UnityObfuscator.Editor
                 string currentName = nameProperty.GetValue(type) as string;
                 
                 // Don't rename special types
-                if (currentName.StartsWith("<") || currentName == "Program" || currentName.Contains("MonoBehaviour"))
+                if (currentName.StartsWith("<") || currentName == "Program")
                 {
+                    return false;
+                }
+                
+                // Check if this is a Unity serializable type
+                bool isUnitySerializable = IsUnitySerializableType(type, typeDefinitionType);
+                
+                // If we want to preserve Unity types OR if we want to obfuscate but patch assets
+                if (isUnitySerializable)
+                {
+                    if (config.preserveMonoBehaviourNames)
+                    {
+                        // Traditional approach: preserve the name
+                        logger.Log($"Preserving Unity serializable type: {currentName}");
+                        return false;
+                    }
+                    else
+                    {
+                        // New approach: obfuscate and record mapping for asset patching
+                        logger.Log($"Will obfuscate Unity serializable type (will patch assets): {currentName}");
+                    }
+                }
+                
+                // Don't rename types with serialization attributes if preserving
+                if (config.preserveMonoBehaviourNames && HasSerializationAttribute(type, typeDefinitionType))
+                {
+                    logger.Log($"Preserving type with serialization attribute: {currentName}");
                     return false;
                 }
                 
                 string newName = GenerateObfuscatedName();
                 nameProperty.SetValue(type, newName);
                 nameMap[currentName] = newName;
+                
+                // Register mapping for asset patching
+                assetPatcher.RegisterTypeMapping(currentName, newName);
                 
                 return true;
             }
@@ -386,8 +431,32 @@ namespace UnityObfuscator.Editor
                     return false;
                 }
                 
+                // Check if field has preserve attributes (SerializeField, etc.)
+                bool hasPreserveAttribute = HasPreserveAttribute(field, fieldDefinitionType);
+                
+                if (hasPreserveAttribute)
+                {
+                    if (config.preserveSerializedFields)
+                    {
+                        // Traditional approach: preserve the name
+                        logger.Log($"Preserving field with attribute: {currentName}");
+                        return false;
+                    }
+                    else
+                    {
+                        // New approach: obfuscate and record mapping for asset patching
+                        logger.Log($"Will obfuscate serialized field (will patch assets): {currentName}");
+                    }
+                }
+                
                 string newName = GenerateObfuscatedName();
                 nameProperty.SetValue(field, newName);
+                
+                // Register field mapping for asset patching (if this field is serialized)
+                if (hasPreserveAttribute && !string.IsNullOrEmpty(currentTypeName))
+                {
+                    assetPatcher.RegisterFieldMapping(currentTypeName, currentName, newName);
+                }
                 
                 return true;
             }
@@ -429,10 +498,161 @@ namespace UnityObfuscator.Editor
                 "OnEnable", "OnDisable", "OnDestroy", "OnApplicationQuit",
                 "OnCollisionEnter", "OnCollisionExit", "OnCollisionStay",
                 "OnTriggerEnter", "OnTriggerExit", "OnTriggerStay",
-                "OnMouseDown", "OnMouseUp", "OnMouseEnter", "OnMouseExit"
+                "OnMouseDown", "OnMouseUp", "OnMouseEnter", "OnMouseExit",
+                "OnCollisionEnter2D", "OnCollisionExit2D", "OnCollisionStay2D",
+                "OnTriggerEnter2D", "OnTriggerExit2D", "OnTriggerStay2D",
+                "OnBecameVisible", "OnBecameInvisible", "OnGUI", "OnDrawGizmos",
+                "OnDrawGizmosSelected", "OnValidate", "Reset"
             };
             
             return specialMethods.Contains(methodName);
+        }
+        
+        /// <summary>
+        /// Check if a type inherits from MonoBehaviour or ScriptableObject
+        /// These types are referenced by Unity scenes and prefabs
+        /// </summary>
+        private bool IsUnitySerializableType(object type, Type typeDefinitionType)
+        {
+            try
+            {
+                // Get BaseType property
+                PropertyInfo baseTypeProperty = typeDefinitionType.GetProperty("BaseType");
+                if (baseTypeProperty == null) return false;
+                
+                object currentType = type;
+                
+                // Walk up the inheritance chain
+                for (int i = 0; i < 20 && currentType != null; i++) // Limit depth to prevent infinite loops
+                {
+                    PropertyInfo nameProperty = typeDefinitionType.GetProperty("Name");
+                    string typeName = nameProperty?.GetValue(currentType) as string;
+                    
+                    // Check if this is a Unity serializable base type
+                    if (typeName == "MonoBehaviour" || typeName == "ScriptableObject" || 
+                        typeName == "StateMachineBehaviour" || typeName == "Editor")
+                    {
+                        return true;
+                    }
+                    
+                    // Get namespace
+                    PropertyInfo namespaceProperty = typeDefinitionType.GetProperty("Namespace");
+                    string typeNamespace = namespaceProperty?.GetValue(currentType) as string;
+                    
+                    // If we're in UnityEngine or UnityEditor namespace, it's a Unity type
+                    if (!string.IsNullOrEmpty(typeNamespace) && 
+                        (typeNamespace.StartsWith("UnityEngine") || typeNamespace.StartsWith("UnityEditor")))
+                    {
+                        return true;
+                    }
+                    
+                    // Move to base type
+                    currentType = baseTypeProperty.GetValue(currentType);
+                }
+                
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Check if a type has serialization attributes ([Serializable])
+        /// </summary>
+        private bool HasSerializationAttribute(object type, Type typeDefinitionType)
+        {
+            try
+            {
+                PropertyInfo hasCustomAttributesProperty = typeDefinitionType.GetProperty("HasCustomAttributes");
+                if (hasCustomAttributesProperty == null) return false;
+                
+                bool hasAttributes = (bool)hasCustomAttributesProperty.GetValue(type);
+                if (!hasAttributes) return false;
+                
+                PropertyInfo customAttributesProperty = typeDefinitionType.GetProperty("CustomAttributes");
+                if (customAttributesProperty == null) return false;
+                
+                var attributes = customAttributesProperty.GetValue(type) as System.Collections.IEnumerable;
+                if (attributes == null) return false;
+                
+                foreach (var attr in attributes)
+                {
+                    Type customAttributeType = attr.GetType();
+                    PropertyInfo attributeTypeProperty = customAttributeType.GetProperty("AttributeType");
+                    if (attributeTypeProperty == null) continue;
+                    
+                    object attributeType = attributeTypeProperty.GetValue(attr);
+                    if (attributeType == null) continue;
+                    
+                    PropertyInfo fullNameProperty = attributeType.GetType().GetProperty("FullName");
+                    string attributeFullName = fullNameProperty?.GetValue(attributeType) as string;
+                    
+                    if (!string.IsNullOrEmpty(attributeFullName) && 
+                        (attributeFullName.Contains("Serializable") || attributeFullName.Contains("Preserve")))
+                    {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Check if a field/property has preserve attributes (SerializeField, etc.)
+        /// </summary>
+        private bool HasPreserveAttribute(object member, Type memberDefinitionType)
+        {
+            try
+            {
+                PropertyInfo hasCustomAttributesProperty = memberDefinitionType.GetProperty("HasCustomAttributes");
+                if (hasCustomAttributesProperty == null) return false;
+                
+                bool hasAttributes = (bool)hasCustomAttributesProperty.GetValue(member);
+                if (!hasAttributes) return false;
+                
+                PropertyInfo customAttributesProperty = memberDefinitionType.GetProperty("CustomAttributes");
+                if (customAttributesProperty == null) return false;
+                
+                var attributes = customAttributesProperty.GetValue(member) as System.Collections.IEnumerable;
+                if (attributes == null) return false;
+                
+                foreach (var attr in attributes)
+                {
+                    Type customAttributeType = attr.GetType();
+                    PropertyInfo attributeTypeProperty = customAttributeType.GetProperty("AttributeType");
+                    if (attributeTypeProperty == null) continue;
+                    
+                    object attributeType = attributeTypeProperty.GetValue(attr);
+                    if (attributeType == null) continue;
+                    
+                    PropertyInfo fullNameProperty = attributeType.GetType().GetProperty("FullName");
+                    string attributeFullName = fullNameProperty?.GetValue(attributeType) as string;
+                    
+                    if (string.IsNullOrEmpty(attributeFullName)) continue;
+                    
+                    // Check against configured preserve attributes
+                    foreach (var preserveAttr in config.preserveAttributes)
+                    {
+                        if (attributeFullName == preserveAttr || attributeFullName.EndsWith("." + preserveAttr))
+                        {
+                            return true;
+                        }
+                    }
+                }
+                
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

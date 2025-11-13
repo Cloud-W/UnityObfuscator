@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// Sample script to test obfuscation
@@ -16,11 +17,17 @@ public class TestScript : MonoBehaviour
     // String literals can be encrypted if enabled
     private const string SecretMessage = "This is a secret message!";
     
+
+    [SerializeField]
+    private Text _text;
+
     void Start()
     {
         Debug.Log("TestScript started");
         Debug.Log(SecretMessage);
         InitializePlayer();
+
+        _text.text = SecretMessage;
     }
     
     void Update()

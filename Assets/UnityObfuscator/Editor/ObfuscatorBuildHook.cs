@@ -3,6 +3,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using System.IO;
+using System.Collections.Generic;
 
 namespace UnityObfuscator.Editor
 {

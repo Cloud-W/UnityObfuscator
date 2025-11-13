@@ -13,6 +13,9 @@
     "obfuscatePropertyNames": true,
     "encryptStrings": false,
     "controlFlowObfuscation": false,
+    "preserveMonoBehaviourNames": true,
+    "preserveSerializedFields": true,
+    "enableAssetPatching": false,
     "excludedNamespaces": [
         "UnityEngine",
         "UnityEditor",

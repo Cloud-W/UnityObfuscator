@@ -4,7 +4,7 @@ A comprehensive Unity Editor plugin for obfuscating IL2CPP assemblies before nat
 
 ## Features
 
-- **Automated Build Integration**: Hooks into Unity's build pipeline (IPreprocessBuildWithReport)
+- **Automated Build Integration**: Hooks into Unity's build pipeline (IPostBuildPlayerScriptDLLs)
 - **Manual Control**: Editor window for configuration and manual execution
 - **CLI Support**: Batch mode execution for CI/CD pipelines
 - **Obfuscation Capabilities**:
@@ -161,13 +161,13 @@ Unity.exe -quit -batchmode -projectPath "path/to/project" \
 
 ## Build Pipeline Integration
 
-The plugin hooks into Unity's build pipeline at the preprocessing stage:
+The plugin hooks into Unity's build pipeline using `IPostBuildPlayerScriptDLLs`:
 
 ```
-C# Compilation → [Obfuscation] → IL2CPP → Native Binary
+C# Compilation → Copy to Staging Area → [Obfuscation] → IL2CPP → Native Binary
 ```
 
-This ensures obfuscated assemblies are used for IL2CPP conversion.
+This ensures IL2CPP converts the obfuscated assemblies, not the original ones. The obfuscation happens after Unity copies script DLLs to the build staging area (`Temp/StagingArea/`) but before IL2CPP conversion.
 
 To enable automatic obfuscation during builds:
 - Set `autoRunOnBuild: true` in the configuration

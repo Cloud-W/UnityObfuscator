@@ -95,16 +95,18 @@ Unity Compilation
     ↓
 DLL Assemblies (Library/ScriptAssemblies/)
     ↓
-[OBFUSCATION HAPPENS HERE]
+Copy to Build Staging Area (Temp/StagingArea/)
+    ↓
+[OBFUSCATION HAPPENS HERE] ← IPostBuildPlayerScriptDLLs hook
     ↓
 Obfuscated DLL Assemblies
     ↓
-IL2CPP Conversion
+IL2CPP Conversion (uses obfuscated DLLs)
     ↓
 Native Binary
 ```
 
-The plugin hooks into Unity's build pipeline and obfuscates assemblies **after C# compilation** but **before IL2CPP conversion**.
+The plugin hooks into Unity's build pipeline using `IPostBuildPlayerScriptDLLs`, obfuscating assemblies **after they are copied to the build staging area** but **before IL2CPP conversion**. This ensures IL2CPP converts the obfuscated code, not the original.
 
 ## 🔒 What Gets Obfuscated?
 
@@ -181,9 +183,10 @@ Features:
 
 ### Build Hook
 Automatically runs during builds:
-- IPreprocessBuildWithReport implementation
-- Runs after C# compilation
+- IPostBuildPlayerScriptDLLs implementation
+- Runs after DLLs are copied to staging area
 - Before IL2CPP conversion
+- Obfuscates the actual DLLs used by IL2CPP
 - Can cancel build on failure
 
 ### Menu Integration
